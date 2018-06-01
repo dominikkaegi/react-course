@@ -1,4 +1,3 @@
-import axios from 'axios';
 import {SAVE_COMMENT, FETCH_COMMENTS} from 'actions/types';
 
 export default function(state = [], action) {
@@ -10,14 +9,5 @@ export default function(state = [], action) {
       return [...state, ...comments];
     default:
       return state;
-  }
-}
-
-export function fetchComments() {
-  const response = axios.get('http://jsonplaceholder.typicode.com/comments');
-
-  return {
-    action: FETCH_COMMENTS,
-    payload: response,
   }
 }

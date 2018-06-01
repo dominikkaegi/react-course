@@ -433,38 +433,144 @@ export default ({children, intialState = {}}) => {
 };
 ```
 
+This allows us to use promises with redux. Further we need to wire up actions and reducers with the components to make requests with axios.
+
+* Creating an ActionType
+
+	```js
+		// actions/types.js
+		export const SAVE_COMMENT = 'save_comment';
+		export const FETCH_COMMENTS = 'fetch_comments';
+	```
+* Creating an Action
+
+	```js
+	// actions/index.js
+	import axios from 'axios';
+	import {SAVE_COMMENT, FETCH_COMMENTS} from 'actions/types';
+	
+	
+	export function saveComment(comment) {
+	  return {
+	    type: SAVE_COMMENT,
+	    payload: comment,
+	  };
+	}
+	
+	export function fetchComments() {
+	  const response = axios.get('http://jsonplaceholder.typicode.com/comments');
+	  return {
+	    type: FETCH_COMMENTS,
+	    payload: response,
+	  }
+	}
+	```
+* Setting up the Reducer
+
+	```js
+	// reducers/comments.js
+	import {SAVE_COMMENT, FETCH_COMMENTS} from 'actions/types';
+	
+	export default function(state = [], action) {
+	  switch(action.type) {
+	    case SAVE_COMMENT:
+	      return [...state, action.payload];
+	    case FETCH_COMMENTS:
+	      const comments = action.payload.data.map((comment) => comment.name);
+	      return [...state, ...comments];
+	    default:
+	      return state;
+	  }
+	}
+	```
+Then we are ready to go for the testing. Instead of making a unit test, we want to make a integration test. See next section on how to do this.
+
+## Integration Testing
+The difference between an unit test and an integration test is that a unit test only test one thing at the time in one component. With an integration test we test multiple components and functionalities together.
+
+![uni vs integration test](unit-vs-integration-test.png)
+
+To now create an integration test we create a ```src/__tests__/integrations.test.js```. In the File we import the App, the Root and the mount from enzyme. Then we could think that we could create our test ilke this:
+
+```js
+import React from 'react';
+import {mount} from 'enzyme';
+import Root from 'Root';
+import App from 'components/App';
+
+it('can fetch of comments and display them', () => {
+  // Attempt to render the *entire* app
+  const wrapped = mount (
+    <Root>
+      <App />
+    </Root>
+  );
+
+  // find the 'fetchComments' button and click it
+  wrapped.find('.fetch-comments').simulate('click');
+
+  // expect to find a list of comments!
+  expect(wrapped.find('li').length).toEqual(500);
+})
+```
+But this test won't work. The reason for that is that we are making an axios request. And the testenviroment is a different one from the application enviroment. Therefore the request fails and the response is undefined. When we then try to map that request we get an error. We can avoid this by using ```moxios```, which is a package to mock API calls.
 
 
+```js
+import React from 'react';
+import {mount} from 'enzyme';
+import moxios from 'moxios';
 
+import Root from 'Root';
+import App from 'components/App';
 
+beforeEach(() => {
+  moxios.install();
+  moxios.stubRequest('http://jsonplaceholder.typicode.com/comments', {
+    status: 200,
+    response: [{name: 'Fetched #1'}, {name: 'Fetched #2'}],
+  });
+});
 
+afterEach(() => {
+  moxios.uninstall();
+});
 
+it('can fetch of comments and display them', (done) => {
+  const wrapped = mount (
+    <Root>
+      <App />
+    </Root>
+  );
 
+  wrapped.find('.fetch-comments').simulate('click');
 
+  moxios.wait(() => {
+    wrapped.update();
+    expect(wrapped.find('li').length).toEqual(2);
+    done();
+    wrapped.unmount();
+  });
+});
+```
 
+* To use moxios we need to call ```moxios.install()```
+* To mock an api request we need to call it with the url we want to mock the response for and provide the response with a status code and a respone in the second parameter.
 
+	```js
+	moxios.stubRequest('http://jsonplaceholder.typicode.com/comments', {
+	  status: 200,
+	  response: [{name: 'Fetched #1'}, {name: 'Fetched #2'}],
+	});
+	```
+* once we simulate a request (here with the click), we need make moxios wait, because it is asynchronous. We can do this with ```moxios.wait()```. We also need to signal jest that we finished our request, which can be done with the ```done``` function, which we receive as a parameter.
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+	```js
+	moxios.wait(() => {
+	  wrapped.update();
+	  expect(wrapped.find('li').length).toEqual(2);
+	  done(); // signals jest that the test is finished
+	  wrapped.unmount();
+	});
+	```
+* When we no longer need moxios, we need to ```moxios.uninstall()``` to prevent unwanted side effects in other tests with moxios.
